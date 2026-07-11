@@ -107,9 +107,7 @@ function listToMd(listHtml: string, indent: string = ''): string {
 	let counter = 1;
 	// Match <li> accounting for nested list tags (track depth)
 	const itemRegex = /<li[^>]*>/gi;
-	const endRegex = /<\/li>/gi;
 	let liMatch: RegExpExecArray | null;
-	let prevIdx = 0;
 	itemRegex.lastIndex = 0;
 	while ((liMatch = itemRegex.exec(listHtml)) !== null) {
 		let depth = 1;
@@ -341,7 +339,7 @@ class HTML2MDSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		new Setting(containerEl).setName('HTML to MD Effectiveness Settings').setHeading();
+		new Setting(containerEl).setName('Conversion').setHeading();
 
 		new Setting(containerEl)
 			.setName('Overwrite existing .md files')

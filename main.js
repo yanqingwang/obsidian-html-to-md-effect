@@ -139,9 +139,7 @@ function listToMd(listHtml, indent = "") {
   const isOrdered = /<ol[^>]*>/i.test(listHtml);
   let counter = 1;
   const itemRegex = /<li[^>]*>/gi;
-  const endRegex = /<\/li>/gi;
   let liMatch;
-  let prevIdx = 0;
   itemRegex.lastIndex = 0;
   while ((liMatch = itemRegex.exec(listHtml)) !== null) {
     let depth = 1;
@@ -324,7 +322,7 @@ var HTML2MDSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("HTML to MD Effectiveness Settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Conversion").setHeading();
     new import_obsidian.Setting(containerEl).setName("Overwrite existing .md files").setDesc("If enabled, will overwrite existing Markdown files with converted content").addToggle((t) => t.setValue(this.plugin.settings.overwrite).onChange(async (v) => {
       this.plugin.settings.overwrite = v;
       await this.plugin.saveSettings();
