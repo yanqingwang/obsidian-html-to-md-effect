@@ -8,19 +8,25 @@ const path = require('path');
 // Since we can't require .ts files, we test against the built plugin or inline the converter
 
 // Inline the converter functions for standalone testing
+var ENTITY_MAP = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+  '&#39;': "'", '&#x60;': '`', '&nbsp;': ' ', '&mdash;': '—',
+  '&ndash;': '–', '&hellip;': '…', '&copy;': '©', '&reg;': '®',
+  '&trade;': '™', '&bull;': '•', '&deg;': '°', '&plusmn;': '±',
+  '&sect;': '§', '&laquo;': '«', '&raquo;': '»', '&middot;': '·',
+  '&times;': '×', '&divide;': '÷', '&pound;': '£', '&euro;': '€',
+  '&yen;': '¥', '&cent;': '¢', '&para;': '¶', '&brvbar;': '¦',
+  '&acute;': '´', '&cedil;': '¸', '&macr;': '¯', '&uml;': '¨',
+};
+
 function decodeEntities(s) {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x60;/g, '`')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)))
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–')
-    .replace(/&hellip;/g, '…');
+  var r = s;
+  for (var ent in ENTITY_MAP) {
+    r = r.split(ent).join(ENTITY_MAP[ent]);
+  }
+  r = r.replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(parseInt(n)); });
+  r = r.replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)); });
+  return r;
 }
 
 function convertInline(html) {
@@ -71,23 +77,18 @@ function extractTableCells(rowHtml) {
 
 function tableToMd(tableHtml) {
   const lines = [];
-  const headerMatch = tableHtml.match(/<thead>([\s\S]*?)<\/thead>/i);
-  if (headerMatch) {
-    const cells = extractTableCells(headerMatch[1]);
-    if (cells.length > 0) {
+  let firstRow = true;
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+    const cells = extractTableCells(rowMatch[1]);
+    if (cells.length === 0) continue;
+    if (firstRow) {
       lines.push('| ' + cells.join(' | ') + ' |');
       lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
-    }
-  }
-  const bodyMatch = tableHtml.match(/<tbody>([\s\S]*?)<\/tbody>/i);
-  if (bodyMatch) {
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let rowMatch;
-    while ((rowMatch = rowRegex.exec(bodyMatch[1])) !== null) {
-      const cells = extractTableCells(rowMatch[1]);
-      if (cells.length > 0) {
-        lines.push('| ' + cells.join(' | ') + ' |');
-      }
+      firstRow = false;
+    } else {
+      lines.push('| ' + cells.join(' | ') + ' |');
     }
   }
   return lines.join('\n');

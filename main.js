@@ -35,8 +35,48 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
+var ENTITY_MAP = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&#x60;": "`",
+  "&nbsp;": " ",
+  "&mdash;": "\u2014",
+  "&ndash;": "\u2013",
+  "&hellip;": "\u2026",
+  "&copy;": "\xA9",
+  "&reg;": "\xAE",
+  "&trade;": "\u2122",
+  "&bull;": "\u2022",
+  "&deg;": "\xB0",
+  "&plusmn;": "\xB1",
+  "&sect;": "\xA7",
+  "&laquo;": "\xAB",
+  "&raquo;": "\xBB",
+  "&middot;": "\xB7",
+  "&times;": "\xD7",
+  "&divide;": "\xF7",
+  "&pound;": "\xA3",
+  "&euro;": "\u20AC",
+  "&yen;": "\xA5",
+  "&cent;": "\xA2",
+  "&para;": "\xB6",
+  "&brvbar;": "\xA6",
+  "&acute;": "\xB4",
+  "&cedil;": "\xB8",
+  "&macr;": "\xAF",
+  "&uml;": "\xA8"
+};
 function decodeEntities(s) {
-  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x60;/g, "`").replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n))).replace(/&nbsp;/g, " ").replace(/&mdash;/g, "\u2014").replace(/&ndash;/g, "\u2013").replace(/&hellip;/g, "\u2026");
+  let r = s;
+  for (const [ent, ch] of Object.entries(ENTITY_MAP)) {
+    r = r.replace(new RegExp(ent.replace("&", "&"), "g"), ch);
+  }
+  r = r.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n)));
+  r = r.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCharCode(parseInt(h, 16)));
+  return r;
 }
 function convertInline(html) {
   let s = html;
@@ -67,25 +107,20 @@ function extractBody(html) {
   return s;
 }
 function tableToMd(tableHtml) {
-  const rows = [];
   const lines = [];
-  const headerMatch = tableHtml.match(/<thead>([\s\S]*?)<\/thead>/i);
-  if (headerMatch) {
-    const cells = extractTableCells(headerMatch[1]);
-    if (cells.length > 0) {
+  let firstRow = true;
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+    const cells = extractTableCells(rowMatch[1]);
+    if (cells.length === 0)
+      continue;
+    if (firstRow) {
       lines.push("| " + cells.join(" | ") + " |");
       lines.push("| " + cells.map(() => "---").join(" | ") + " |");
-    }
-  }
-  const bodyMatch = tableHtml.match(/<tbody>([\s\S]*?)<\/tbody>/i);
-  if (bodyMatch) {
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let rowMatch;
-    while ((rowMatch = rowRegex.exec(bodyMatch[1])) !== null) {
-      const cells = extractTableCells(rowMatch[1]);
-      if (cells.length > 0) {
-        lines.push("| " + cells.join(" | ") + " |");
-      }
+      firstRow = false;
+    } else {
+      lines.push("| " + cells.join(" | ") + " |");
     }
   }
   return lines.join("\n");

@@ -1,19 +1,25 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, Platform } from 'obsidian';
 
 // ── HTML Entity Decoding ──
+const ENTITY_MAP: Record<string, string> = {
+	'&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+	'&#39;': "'", '&#x60;': '`', '&nbsp;': ' ', '&mdash;': '—',
+	'&ndash;': '–', '&hellip;': '…', '&copy;': '©', '&reg;': '®',
+	'&trade;': '™', '&bull;': '•', '&deg;': '°', '&plusmn;': '±',
+	'&sect;': '§', '&laquo;': '«', '&raquo;': '»', '&middot;': '·',
+	'&times;': '×', '&divide;': '÷', '&pound;': '£', '&euro;': '€',
+	'&yen;': '¥', '&cent;': '¢', '&para;': '¶', '&brvbar;': '¦',
+	'&acute;': '´', '&cedil;': '¸', '&macr;': '¯', '&uml;': '¨',
+};
+
 function decodeEntities(s: string): string {
-	return s
-		.replace(/&amp;/g, '&')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&#x60;/g, '`')
-		.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n)))
-		.replace(/&nbsp;/g, ' ')
-		.replace(/&mdash;/g, '—')
-		.replace(/&ndash;/g, '–')
-		.replace(/&hellip;/g, '…');
+	let r = s;
+	for (const [ent, ch] of Object.entries(ENTITY_MAP)) {
+		r = r.replace(new RegExp(ent.replace('&', '&'), 'g'), ch);
+	}
+	r = r.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n)));
+	r = r.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCharCode(parseInt(h, 16)));
+	return r;
 }
 
 // ── Inline Conversion ──
@@ -62,29 +68,22 @@ function extractBody(html: string): string {
 
 // ── Table Conversion ──
 function tableToMd(tableHtml: string): string {
-	const rows: string[] = [];
 	const lines: string[] = [];
+	let firstRow = true;
 
-	// Extract header
-	const headerMatch = tableHtml.match(/<thead>([\s\S]*?)<\/thead>/i);
-	if (headerMatch) {
-		const cells = extractTableCells(headerMatch[1]);
-		if (cells.length > 0) {
+	// Parse all <tr> rows (handle both wrapped in thead/tbody and bare)
+	const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+	let rowMatch: RegExpExecArray | null;
+	while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+		const cells = extractTableCells(rowMatch[1]);
+		if (cells.length === 0) continue;
+
+		if (firstRow) {
 			lines.push('| ' + cells.join(' | ') + ' |');
 			lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
-		}
-	}
-
-	// Extract body
-	const bodyMatch = tableHtml.match(/<tbody>([\s\S]*?)<\/tbody>/i);
-	if (bodyMatch) {
-		const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-		let rowMatch: RegExpExecArray | null;
-		while ((rowMatch = rowRegex.exec(bodyMatch[1])) !== null) {
-			const cells = extractTableCells(rowMatch[1]);
-			if (cells.length > 0) {
-				lines.push('| ' + cells.join(' | ') + ' |');
-			}
+			firstRow = false;
+		} else {
+			lines.push('| ' + cells.join(' | ') + ' |');
 		}
 	}
 
