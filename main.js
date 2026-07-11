@@ -324,7 +324,7 @@ var HTML2MDSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "HTML to MD Effectiveness Settings" });
+    new import_obsidian.Setting(containerEl).setName("HTML to MD Effectiveness Settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("Overwrite existing .md files").setDesc("If enabled, will overwrite existing Markdown files with converted content").addToggle((t) => t.setValue(this.plugin.settings.overwrite).onChange(async (v) => {
       this.plugin.settings.overwrite = v;
       await this.plugin.saveSettings();

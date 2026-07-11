@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, Platform } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
 
 // ── HTML Entity Decoding ──
 const ENTITY_MAP: Record<string, string> = {
@@ -341,7 +341,7 @@ class HTML2MDSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'HTML to MD Effectiveness Settings' });
+		new Setting(containerEl).setName('HTML to MD Effectiveness Settings').setHeading();
 
 		new Setting(containerEl)
 			.setName('Overwrite existing .md files')
