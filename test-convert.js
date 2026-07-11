@@ -99,18 +99,34 @@ function listToMd(listHtml, indent) {
   const lines = [];
   const isOrdered = /<ol[^>]*>/i.test(listHtml);
   let counter = 1;
-  const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-  let match;
-  while ((match = itemRegex.exec(listHtml)) !== null) {
-    let content = match[1].trim();
+  // Match <li> accounting for nested list tags (track depth)
+  var liRegex = /<li[^>]*>/gi;
+  var liMatch;
+  liRegex.lastIndex = 0;
+  while ((liMatch = liRegex.exec(listHtml)) !== null) {
+    var depth = 1;
+    var idx = liMatch.index + liMatch[0].length;
+    while (depth > 0 && idx < listHtml.length) {
+      var nextLi = listHtml.indexOf('<li', idx);
+      var nextEnd = listHtml.indexOf('</li>', idx);
+      if (nextEnd === -1) break;
+      if (nextLi !== -1 && nextLi < nextEnd) { depth++; idx = nextLi + 3; }
+      else { depth--; idx = nextEnd + 5; }
+    }
+    var content = listHtml.slice(liMatch.index + liMatch[0].length, idx - 5).trim();
     const prefix = isOrdered ? `${counter}.` : '-';
     let nested = '';
-    const nestedUl = content.match(/<ul[\s\S]*?<\/ul>/i);
-    const nestedOl = content.match(/<ol[\s\S]*?<\/ol>/i);
-    if (nestedUl || nestedOl) {
+    let prevContent = '';
+    while (prevContent !== content) {
+      prevContent = content;
+      const nestedUl = content.match(/<ul[\s\S]*?<\/ul>/i);
+      const nestedOl = content.match(/<ol[\s\S]*?<\/ol>/i);
+      if (!nestedUl && !nestedOl) break;
       const nm = nestedUl || nestedOl;
-      nested = '\n' + listToMd(nm[0], indent + '  ');
-      content = content.replace(/<ul[\s\S]*?<\/ul>/i, '').replace(/<ol[\s\S]*?<\/ol>/i, '').trim();
+      if (nm) {
+        nested += '\n' + listToMd(nm[0], indent + '  ');
+        content = content.replace(nm[0], '');
+      }
     }
     const text = convertInline(decodeEntities(content));
     lines.push(indent + prefix + ' ' + text + nested);
@@ -305,12 +321,33 @@ test('Blockquote', () => {
   assertStrContains(md, '> This is a quote', 'blockquote');
 });
 
+test('Image conversion', () => {
+  assertEq(convertInline('<img src="cat.png" alt="A cat">'), '![A cat](cat.png)', 'img with alt');
+  assertEq(convertInline('<img src="dog.png">'), '![](dog.png)', 'img without alt');
+});
+
+test('Table without thead/tbody (bare tr)', () => {
+  const html = '<table><tr><th>X</th><th>Y</th></tr><tr><td>1</td><td>2</td></tr></table>';
+  const md = tableToMd(html);
+  assertStrContains(md, '| X | Y |', 'bare table header');
+  assertStrContains(md, '| 1 | 2 |', 'bare table data');
+  assertStrContains(md, '| --- |', 'bare table separator');
+});
+
+test('Nested list', () => {
+  const html = '<ul><li>Item A<ul><li>Sub 1</li><li>Sub 2</li></ul></li><li>Item B</li></ul>';
+  const md = listToMd(html);
+  assertStrContains(md, '- Item A', 'parent item');
+  assertStrContains(md, '  - Sub 1', 'nested item');
+  assertStrContains(md, '- Item B', 'second parent');
+});
+
 // ── Integration: Round-Trip Test ──
 console.log('\n📦 Integration: Round-Trip\n');
 
 // Read test files
-const htmlPath = path.join(__dirname, 'test-小狗.html');
-const mdPath = path.join(__dirname, 'test-小狗.md');
+const htmlPath = path.join(__dirname, 'test-sample.html');
+const mdPath = path.join(__dirname, 'test-sample.md');
 
 if (fs.existsSync(htmlPath) && fs.existsSync(mdPath)) {
   const inputHtml = fs.readFileSync(htmlPath, 'utf-8');

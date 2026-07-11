@@ -105,20 +105,42 @@ function listToMd(listHtml: string, indent: string = ''): string {
 	const lines: string[] = [];
 	const isOrdered = /<ol[^>]*>/i.test(listHtml);
 	let counter = 1;
-	const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-	let match: RegExpExecArray | null;
-	while ((match = itemRegex.exec(listHtml)) !== null) {
-		let content = match[1];
+	// Match <li> accounting for nested list tags (track depth)
+	const itemRegex = /<li[^>]*>/gi;
+	const endRegex = /<\/li>/gi;
+	let liMatch: RegExpExecArray | null;
+	let prevIdx = 0;
+	itemRegex.lastIndex = 0;
+	while ((liMatch = itemRegex.exec(listHtml)) !== null) {
+		let depth = 1;
+		let idx = liMatch.index + liMatch[0].length;
+		// Find matching </li> accounting for nested <li> tags
+		while (depth > 0 && idx < listHtml.length) {
+			const nextLi = listHtml.indexOf('<li', idx);
+			const nextEnd = listHtml.indexOf('</li>', idx);
+			if (nextEnd === -1) break;
+			if (nextLi !== -1 && nextLi < nextEnd) {
+				depth++;
+				idx = nextLi + 3;
+			} else {
+				depth--;
+				idx = nextEnd + 5;
+			}
+		}
+		let content = listHtml.slice(liMatch.index + liMatch[0].length, idx - 5).trim();
 		const prefix = isOrdered ? `${counter}.` : '-';
-		// Check for nested lists
+		// Check for nested lists (handle all occurrences)
 		let nested = '';
-		const nestedUl = content.match(/<ul[\s\S]*?<\/ul>/i);
-		const nestedOl = content.match(/<ol[\s\S]*?<\/ol>/i);
-		if (nestedUl || nestedOl) {
-			const nestedMatch = nestedUl || nestedOl;
-			if (nestedMatch) {
-				nested = '\n' + listToMd(nestedMatch[0], indent + '  ');
-				content = content.replace(/<ul[\s\S]*?<\/ul>/i, '').replace(/<ol[\s\S]*?<\/ol>/i, '');
+		let prevContent = '';
+		while (prevContent !== content) {
+			prevContent = content;
+			const nestedUl = content.match(/<ul[\s\S]*?<\/ul>/i);
+			const nestedOl = content.match(/<ol[\s\S]*?<\/ol>/i);
+			if (!nestedUl && !nestedOl) break;
+			const nm = nestedUl || nestedOl;
+			if (nm) {
+				nested += '\n' + listToMd(nm[0], indent + '  ');
+				content = content.replace(nm[0], '');
 			}
 		}
 		const text = convertInline(decodeEntities(content.trim()));
@@ -144,7 +166,7 @@ function htmlToMd(html: string): string {
 	if (!s) return '';
 
 	// Handle code blocks first (they contain other HTML-like content)
-	s = s.replace(/<pre><code(?:\s+class="[^"]*language-(\w+)[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>/gi, (_m, lang, code) => {
+	s = s.replace(/<pre><code(?:\s+class="[^"]*language-([^"]+)[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>/gi, (_m, lang, code) => {
 		const fence = '```' + (lang || '') + '\n' + decodeEntities(code.replace(/<[^>]*>/g, '')) + '\n```';
 		return '\n\n' + fence + '\n\n';
 	});
