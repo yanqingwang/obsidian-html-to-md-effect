@@ -17,8 +17,8 @@ function decodeEntities(s: string): string {
 	for (const [ent, ch] of Object.entries(ENTITY_MAP)) {
 		r = r.replace(new RegExp(ent.replace('&', '&'), 'g'), ch);
 	}
-	r = r.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n)));
-	r = r.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCharCode(parseInt(h, 16)));
+	r = r.replace(/&#(\d+);/g, (_m: string, n: string): string => String.fromCharCode(parseInt(n)));
+	r = r.replace(/&#x([0-9a-fA-F]+);/g, (_m: string, h: string): string => String.fromCharCode(parseInt(h, 16)));
 	return r;
 }
 
@@ -41,7 +41,7 @@ function convertInline(html: string): string {
 	s = s.replace(/<del>([\s\S]*?)<\/del>/gi, '~~$1~~');
 	s = s.replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~');
 	// Inline code
-	s = s.replace(/<code>([\s\S]*?)<\/code>/gi, (_m, c) => '`' + c.replace(/`/g, '\\`') + '`');
+	s = s.replace(/<code>([\s\S]*?)<\/code>/gi, (_m: string, c: string): string => '`' + c.replace(/`/g, '\\`') + '`');
 	// Line breaks
 	s = s.replace(/<br\s*\/?>/gi, '\n');
 	return s;
@@ -164,13 +164,13 @@ function htmlToMd(html: string): string {
 	if (!s) return '';
 
 	// Handle code blocks first (they contain other HTML-like content)
-	s = s.replace(/<pre><code(?:\s+class="[^"]*language-([^"]+)[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>/gi, (_m, lang, code) => {
+	s = s.replace(/<pre><code(?:\s+class="[^"]*language-([^"]+)[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>/gi, (_m: string, lang: string | undefined, code: string): string => {
 		const fence = '```' + (lang || '') + '\n' + decodeEntities(code.replace(/<[^>]*>/g, '')) + '\n```';
 		return '\n\n' + fence + '\n\n';
 	});
 
 	// Code blocks without pre wrapper (just <code> in <pre>)
-	s = s.replace(/<pre>[\s\S]*?<code[^>]*>([\s\S]*?)<\/code>[\s\S]*?<\/pre>/gi, (_m, code) => {
+	s = s.replace(/<pre>[\s\S]*?<code[^>]*>([\s\S]*?)<\/code>[\s\S]*?<\/pre>/gi, (_m: string, code: string): string => {
 		return '\n\n```\n' + decodeEntities(code.replace(/<[^>]*>/g, '')) + '\n```\n\n';
 	});
 
@@ -180,7 +180,7 @@ function htmlToMd(html: string): string {
 	});
 
 	// Blockquotes
-	s = s.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m, content) => {
+	s = s.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m: string, content: string): string => {
 		return '\n\n' + blockquoteToMd(content) + '\n\n';
 	});
 
@@ -189,18 +189,18 @@ function htmlToMd(html: string): string {
 	s = s.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (m) => '\n\n' + listToMd(m) + '\n\n');
 
 	// Headings
-	s = s.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_m, c) => '# ' + convertInline(decodeEntities(c.trim())));
-	s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_m, c) => '## ' + convertInline(decodeEntities(c.trim())));
-	s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_m, c) => '### ' + convertInline(decodeEntities(c.trim())));
-	s = s.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_m, c) => '#### ' + convertInline(decodeEntities(c.trim())));
-	s = s.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_m, c) => '##### ' + convertInline(decodeEntities(c.trim())));
-	s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_m, c) => '###### ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_m: string, c: string): string => '# ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_m: string, c: string): string => '## ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_m: string, c: string): string => '### ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_m: string, c: string): string => '#### ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_m: string, c: string): string => '##### ' + convertInline(decodeEntities(c.trim())));
+	s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_m: string, c: string): string => '###### ' + convertInline(decodeEntities(c.trim())));
 
 	// Horizontal rules
 	s = s.replace(/<hr[^>]*\/?>/gi, '\n\n---\n\n');
 
 	// Paragraphs (only if they contain text, not just whitespace)
-	s = s.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_m, c) => {
+	s = s.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_m: string, c: string): string => {
 		const text = convertInline(decodeEntities(c.trim()));
 		return text ? '\n\n' + text + '\n\n' : '';
 	});
@@ -318,7 +318,7 @@ export default class HTML2MDPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const data = await this.loadData();
+		const data: Record<string, unknown> | null = await this.loadData() as Record<string, unknown> | null;
 		if (data) {
 			Object.assign(this.settings, data);
 		}

@@ -1,7 +1,7 @@
 {
 	"id": "html-to-md-effect",
 	"name": "HTML to MD Effectiveness",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.6.0",
 	"description": "Convert HTML files to clean Markdown — headings, lists, code blocks, tables, links, images, and more.",
 	"author": "rosswang",
