@@ -1,4 +1,16 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TFolder, FuzzySuggestModal } from 'obsidian';
+
+const HTML_EXTENSIONS = new Set(['html', 'htm']);
+
+function isHtmlFile(file: unknown): file is TFile {
+	return file instanceof TFile && HTML_EXTENSIONS.has(file.extension.toLowerCase());
+}
+
+function getHtmlFiles(app: App): TFile[] {
+	return app.vault.getFiles()
+		.filter(isHtmlFile)
+		.sort((a, b) => a.path.localeCompare(b.path));
+}
 
 // ── HTML Entity Decoding ──
 const ENTITY_MAP: Record<string, string> = {
@@ -236,6 +248,7 @@ interface HTML2MDSettings {
 	addFrontmatter: boolean;
 }
 const DEFAULT_SETTINGS: HTML2MDSettings = { overwrite: false, addFrontmatter: false };
+type ConversionResult = 'converted' | 'skipped' | 'failed';
 
 export default class HTML2MDPlugin extends Plugin {
 	settings: HTML2MDSettings = DEFAULT_SETTINGS;
@@ -245,16 +258,19 @@ export default class HTML2MDPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'convert-html-to-md',
-			name: 'Convert HTML file to Markdown',
-			checkCallback: (checking: boolean) => {
-				const f = this.app.workspace.getActiveFile();
-				if (f?.extension === 'html') {
-					if (!checking) {
-						void this.convertFile(f);
-					}
-					return true;
+			name: 'Convert HTML file to Markdown...',
+			callback: () => {
+				const active = this.app.workspace.getActiveFile();
+				if (isHtmlFile(active)) {
+					void this.convertFile(active);
+					return;
 				}
-				return false;
+				const files = getHtmlFiles(this.app);
+				if (files.length === 0) {
+					new Notice('No HTML files found in vault');
+					return;
+				}
+				new HTMLFileSuggestModal(this.app, this, files).open();
 			}
 		});
 
@@ -264,57 +280,99 @@ export default class HTML2MDPlugin extends Plugin {
 			callback: () => void this.convertBatch()
 		});
 
+		this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
+			if (!isHtmlFile(file)) return;
+			menu.addItem(item => item
+				.setTitle('Convert HTML to Markdown')
+				.setIcon('file-text')
+				.onClick(() => void this.convertFile(file)));
+		}));
+
+		this.registerEvent(this.app.workspace.on('files-menu', (menu, files) => {
+			const htmlFiles = files.filter(isHtmlFile);
+			if (htmlFiles.length < 2) return;
+			menu.addItem(item => item
+				.setTitle(`Convert ${htmlFiles.length} HTML files to Markdown`)
+				.setIcon('file-text')
+				.onClick(() => void this.convertFiles(htmlFiles)));
+		}));
+
 		this.addSettingTab(new HTML2MDSettingTab(this.app, this));
 	}
 
-	async convertFile(file: TFile): Promise<void> {
-		const content = await this.app.vault.read(file);
-		const md = htmlToMd(content);
-		const outPath = (file.parent ? file.parent.path + '/' : '') + file.basename + '.md';
+	async convertFile(file: TFile, silent = false): Promise<ConversionResult> {
+		try {
+			const content = await this.app.vault.read(file);
+			const md = htmlToMd(content);
+			const outPath = (file.parent ? file.parent.path + '/' : '') + file.basename + '.md';
 
-		const existing = this.app.vault.getFileByPath(outPath);
-		if (existing && !this.settings.overwrite) {
-			new Notice('Skipped: ' + outPath + ' (file exists, enable overwrite in settings)');
-			return;
+			const existing = this.app.vault.getFileByPath(outPath);
+			if (existing && !this.settings.overwrite) {
+				if (!silent) {
+					new Notice('Skipped: ' + outPath + ' (file exists, enable overwrite in settings)');
+				}
+				return 'skipped';
+			}
+
+			let finalMd = md;
+			if (this.settings.addFrontmatter) {
+				finalMd = buildFrontmatter(file.basename, file.path) + md;
+			}
+
+			if (existing) {
+				await this.app.vault.modify(existing, finalMd);
+			} else {
+				await this.app.vault.create(outPath, finalMd);
+			}
+			if (!silent) {
+				new Notice('Converted: ' + outPath);
+			}
+			return 'converted';
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e);
+			console.error('Failed to convert', file.path, e);
+			if (!silent) {
+				new Notice(`Failed to convert ${file.path}: ${message}`);
+			}
+			return 'failed';
+		}
+	}
+
+	async convertFiles(files: TFile[]): Promise<void> {
+		const htmlFiles = files.filter(isHtmlFile);
+		if (htmlFiles.length === 0) return;
+
+		let converted = 0;
+		let skipped = 0;
+		let failed = 0;
+		for (const file of htmlFiles) {
+			const result = await this.convertFile(file, true);
+			if (result === 'converted') converted++;
+			else if (result === 'skipped') skipped++;
+			else failed++;
 		}
 
-		let finalMd = md;
-		if (this.settings.addFrontmatter) {
-			finalMd = buildFrontmatter(file.basename, file.path) + md;
-		}
-
-		if (existing) {
-			await this.app.vault.modify(existing, finalMd);
-		} else {
-			await this.app.vault.create(outPath, finalMd);
-		}
-		new Notice('Converted: ' + outPath);
+		const parts = [`Converted ${converted}/${htmlFiles.length}`];
+		if (skipped > 0) parts.push(`${skipped} skipped`);
+		if (failed > 0) parts.push(`${failed} failed`);
+		new Notice(parts.join('; '));
 	}
 
 	async convertBatch(): Promise<void> {
-		const folder = this.app.vault.getAbstractFileByPath(
-			this.app.workspace.getActiveFile()?.parent?.path || '/'
-		);
-		if (!folder || !('children' in folder)) return;
+		const active = this.app.workspace.getActiveFile();
+		const folder = this.app.vault.getAbstractFileByPath(active?.parent?.path || '/');
+		if (!(folder instanceof TFolder)) {
+			new Notice('Could not resolve the current folder');
+			return;
+		}
 
-		const htmlFiles = (folder as unknown as { children: unknown[] }).children.filter(
-			(c): c is TFile => c instanceof TFile && c.extension === 'html'
-		);
+		const htmlFiles = folder.children.filter(isHtmlFile);
 		if (htmlFiles.length === 0) {
 			new Notice('No HTML files found in current folder');
 			return;
 		}
 
-		let count = 0;
-		for (const f of htmlFiles) {
-			try {
-				await this.convertFile(f);
-				count++;
-			} catch (e) {
-				console.error('Failed to convert', f.path, e);
-			}
-		}
-		new Notice(`Converted ${count}/${htmlFiles.length} HTML files`);
+		await this.convertFiles(htmlFiles);
 	}
 
 	async loadSettings(): Promise<void> {
@@ -326,6 +384,25 @@ export default class HTML2MDPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+}
+
+class HTMLFileSuggestModal extends FuzzySuggestModal<TFile> {
+	constructor(app: App, private plugin: HTML2MDPlugin, private files: TFile[]) {
+		super(app);
+		this.setPlaceholder('Select an HTML file to convert');
+	}
+
+	getItems(): TFile[] {
+		return this.files;
+	}
+
+	getItemText(item: TFile): string {
+		return item.path;
+	}
+
+	onChooseItem(item: TFile): void {
+		void this.plugin.convertFile(item);
 	}
 }
 

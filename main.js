@@ -35,6 +35,13 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
+var HTML_EXTENSIONS = /* @__PURE__ */ new Set(["html", "htm"]);
+function isHtmlFile(file) {
+  return file instanceof import_obsidian.TFile && HTML_EXTENSIONS.has(file.extension.toLowerCase());
+}
+function getHtmlFiles(app) {
+  return app.vault.getFiles().filter(isHtmlFile).sort((a, b) => a.path.localeCompare(b.path));
+}
 var ENTITY_MAP = {
   "&amp;": "&",
   "&lt;": "<",
@@ -241,16 +248,19 @@ var HTML2MDPlugin = class extends import_obsidian.Plugin {
     await this.loadSettings();
     this.addCommand({
       id: "convert-html-to-md",
-      name: "Convert HTML file to Markdown",
-      checkCallback: (checking) => {
-        const f = this.app.workspace.getActiveFile();
-        if (f?.extension === "html") {
-          if (!checking) {
-            void this.convertFile(f);
-          }
-          return true;
+      name: "Convert HTML file to Markdown...",
+      callback: () => {
+        const active = this.app.workspace.getActiveFile();
+        if (isHtmlFile(active)) {
+          void this.convertFile(active);
+          return;
         }
-        return false;
+        const files = getHtmlFiles(this.app);
+        if (files.length === 0) {
+          new import_obsidian.Notice("No HTML files found in vault");
+          return;
+        }
+        new HTMLFileSuggestModal(this.app, this, files).open();
       }
     });
     this.addCommand({
@@ -258,51 +268,89 @@ var HTML2MDPlugin = class extends import_obsidian.Plugin {
       name: "Convert all HTML in folder to Markdown",
       callback: () => void this.convertBatch()
     });
+    this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
+      if (!isHtmlFile(file))
+        return;
+      menu.addItem((item) => item.setTitle("Convert HTML to Markdown").setIcon("file-text").onClick(() => void this.convertFile(file)));
+    }));
+    this.registerEvent(this.app.workspace.on("files-menu", (menu, files) => {
+      const htmlFiles = files.filter(isHtmlFile);
+      if (htmlFiles.length < 2)
+        return;
+      menu.addItem((item) => item.setTitle(`Convert ${htmlFiles.length} HTML files to Markdown`).setIcon("file-text").onClick(() => void this.convertFiles(htmlFiles)));
+    }));
     this.addSettingTab(new HTML2MDSettingTab(this.app, this));
   }
-  async convertFile(file) {
-    const content = await this.app.vault.read(file);
-    const md = htmlToMd(content);
-    const outPath = (file.parent ? file.parent.path + "/" : "") + file.basename + ".md";
-    const existing = this.app.vault.getFileByPath(outPath);
-    if (existing && !this.settings.overwrite) {
-      new import_obsidian.Notice("Skipped: " + outPath + " (file exists, enable overwrite in settings)");
+  async convertFile(file, silent = false) {
+    try {
+      const content = await this.app.vault.read(file);
+      const md = htmlToMd(content);
+      const outPath = (file.parent ? file.parent.path + "/" : "") + file.basename + ".md";
+      const existing = this.app.vault.getFileByPath(outPath);
+      if (existing && !this.settings.overwrite) {
+        if (!silent) {
+          new import_obsidian.Notice("Skipped: " + outPath + " (file exists, enable overwrite in settings)");
+        }
+        return "skipped";
+      }
+      let finalMd = md;
+      if (this.settings.addFrontmatter) {
+        finalMd = buildFrontmatter(file.basename, file.path) + md;
+      }
+      if (existing) {
+        await this.app.vault.modify(existing, finalMd);
+      } else {
+        await this.app.vault.create(outPath, finalMd);
+      }
+      if (!silent) {
+        new import_obsidian.Notice("Converted: " + outPath);
+      }
+      return "converted";
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("Failed to convert", file.path, e);
+      if (!silent) {
+        new import_obsidian.Notice(`Failed to convert ${file.path}: ${message}`);
+      }
+      return "failed";
+    }
+  }
+  async convertFiles(files) {
+    const htmlFiles = files.filter(isHtmlFile);
+    if (htmlFiles.length === 0)
       return;
+    let converted = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const file of htmlFiles) {
+      const result = await this.convertFile(file, true);
+      if (result === "converted")
+        converted++;
+      else if (result === "skipped")
+        skipped++;
+      else
+        failed++;
     }
-    let finalMd = md;
-    if (this.settings.addFrontmatter) {
-      finalMd = buildFrontmatter(file.basename, file.path) + md;
-    }
-    if (existing) {
-      await this.app.vault.modify(existing, finalMd);
-    } else {
-      await this.app.vault.create(outPath, finalMd);
-    }
-    new import_obsidian.Notice("Converted: " + outPath);
+    const parts = [`Converted ${converted}/${htmlFiles.length}`];
+    if (skipped > 0)
+      parts.push(`${skipped} skipped`);
+    if (failed > 0)
+      parts.push(`${failed} failed`);
+    new import_obsidian.Notice(parts.join("; "));
   }
   async convertBatch() {
-    const folder = this.app.vault.getAbstractFileByPath(
-      this.app.workspace.getActiveFile()?.parent?.path || "/"
-    );
-    if (!folder || !("children" in folder))
+    const active = this.app.workspace.getActiveFile();
+    const folder = this.app.vault.getAbstractFileByPath(active?.parent?.path || "/");
+    if (!(folder instanceof import_obsidian.TFolder)) {
+      new import_obsidian.Notice("Could not resolve the current folder");
       return;
-    const htmlFiles = folder.children.filter(
-      (c) => c instanceof import_obsidian.TFile && c.extension === "html"
-    );
+    }
+    const htmlFiles = folder.children.filter(isHtmlFile);
     if (htmlFiles.length === 0) {
       new import_obsidian.Notice("No HTML files found in current folder");
       return;
     }
-    let count = 0;
-    for (const f of htmlFiles) {
-      try {
-        await this.convertFile(f);
-        count++;
-      } catch (e) {
-        console.error("Failed to convert", f.path, e);
-      }
-    }
-    new import_obsidian.Notice(`Converted ${count}/${htmlFiles.length} HTML files`);
+    await this.convertFiles(htmlFiles);
   }
   async loadSettings() {
     const data = await this.loadData();
@@ -312,6 +360,23 @@ var HTML2MDPlugin = class extends import_obsidian.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+};
+var HTMLFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
+  constructor(app, plugin, files) {
+    super(app);
+    this.plugin = plugin;
+    this.files = files;
+    this.setPlaceholder("Select an HTML file to convert");
+  }
+  getItems() {
+    return this.files;
+  }
+  getItemText(item) {
+    return item.path;
+  }
+  onChooseItem(item) {
+    void this.plugin.convertFile(item);
   }
 };
 var HTML2MDSettingTab = class extends import_obsidian.PluginSettingTab {
