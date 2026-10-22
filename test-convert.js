@@ -59,7 +59,11 @@ function extractBody(html) {
   s = s.replace(/<\?xml[^>]*\?>/gi, '');
   s = s.replace(/<!--[\s\S]*?-->/g, '');
   s = s.replace(/<\/?html[^>]*>/gi, '');
-  s = s.replace(/<head>[\s\S]*?<\/head>/gi, '');
+  s = s.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, '');
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  s = s.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  s = s.replace(/<svg\b[\s\S]*?<\/svg>/gi, '');
   const bodyMatch = s.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   if (bodyMatch) return bodyMatch[1];
   return s;
@@ -275,6 +279,17 @@ test('Strips HTML wrapper', () => {
 
 test('Handles fragment without wrapper', () => {
   assertEq(extractBody('<h1>Title</h1>').trim(), '<h1>Title</h1>', 'fragment pass-through');
+});
+
+test('Strips scripts, styles, and SVG artifacts', () => {
+  const html = '<html><head><title>T</title><style>.x{color:red}</style></head><body><p>Keep</p><script>var leak = true;</script><svg><text>chart label</text></svg></body></html>';
+  const body = extractBody(html).trim();
+  assertEq(body, '<p>Keep</p>', 'removes code and inline SVG');
+});
+
+test('Handles a head tag with attributes', () => {
+  const html = '<html><head data-theme="dark"><title>T</title></head><body><p>Content</p></body></html>';
+  assertEq(extractBody(html).trim(), '<p>Content</p>', 'head attributes');
 });
 
 console.log('\nUnit: Table Conversion');

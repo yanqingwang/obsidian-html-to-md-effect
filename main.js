@@ -107,7 +107,11 @@ function extractBody(html) {
   s = s.replace(/<\?xml[^>]*\?>/gi, "");
   s = s.replace(/<!--[\s\S]*?-->/g, "");
   s = s.replace(/<\/?html[^>]*>/gi, "");
-  s = s.replace(/<head>[\s\S]*?<\/head>/gi, "");
+  s = s.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, "");
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  s = s.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, "");
+  s = s.replace(/<svg\b[\s\S]*?<\/svg>/gi, "");
   const bodyMatch = s.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   if (bodyMatch)
     return bodyMatch[1];
