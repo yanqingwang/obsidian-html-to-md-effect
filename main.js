@@ -117,6 +117,18 @@ function extractBody(html) {
     return bodyMatch[1];
   return s;
 }
+function normalizeHeadingLines(markdown) {
+  let inFence = false;
+  return markdown.split("\n").map((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return line;
+    }
+    if (inFence)
+      return line;
+    return line.replace(/^[ \t]+(#{1,6})([ \t]*)(.*)$/, "$1 $3");
+  }).join("\n");
+}
 function tableToMd(tableHtml) {
   const lines = [];
   let firstRow = true;
@@ -228,6 +240,7 @@ function htmlToMd(html) {
   s = s.replace(/<span[^>]*>([\s\S]*?)<\/span>/gi, "$1");
   s = s.replace(/<[^>]*>/g, "");
   s = decodeEntities(s);
+  s = normalizeHeadingLines(s);
   s = s.replace(/\n{3,}/g, "\n\n");
   s = s.trim();
   return s + "\n";

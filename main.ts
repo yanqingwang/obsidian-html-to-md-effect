@@ -85,6 +85,19 @@ function extractBody(html: string): string {
 }
 
 // ── Table Conversion ──
+function normalizeHeadingLines(markdown: string): string {
+	let inFence = false;
+	return markdown.split('\n').map((line) => {
+		if (/^\s*```/.test(line)) {
+			inFence = !inFence;
+			return line;
+		}
+		if (inFence) return line;
+		// Remove HTML-induced indentation; Markdown headings must start at the line beginning.
+		return line.replace(/^[ \t]+(#{1,6})([ \t]*)(.*)$/, '$1 $3');
+	}).join('\n');
+}
+
 function tableToMd(tableHtml: string): string {
 	const lines: string[] = [];
 	let firstRow = true;
@@ -232,6 +245,9 @@ function htmlToMd(html: string): string {
 
 	// Decode any remaining entities
 	s = decodeEntities(s);
+
+	// Remove indentation before headings so they render as headings, not code blocks
+	s = normalizeHeadingLines(s);
 
 	// Normalize multiple blank lines
 	s = s.replace(/\n{3,}/g, '\n\n');

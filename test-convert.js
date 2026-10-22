@@ -79,6 +79,18 @@ function extractTableCells(rowHtml) {
   return cells;
 }
 
+function normalizeHeadingLines(markdown) {
+  let inFence = false;
+  return markdown.split('\n').map((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return line;
+    }
+    if (inFence) return line;
+    return line.replace(/^[ \t]+(#{1,6})([ \t]*)(.*)$/, '$1 $3');
+  }).join('\n');
+}
+
 function tableToMd(tableHtml) {
   const lines = [];
   let firstRow = true;
@@ -198,6 +210,8 @@ function htmlToMd(html) {
 
   // Decode remaining entities
   s = decodeEntities(s);
+
+  s = normalizeHeadingLines(s);
 
   // Normalize blank lines
   s = s.replace(/\n{3,}/g, '\n\n');
@@ -322,6 +336,18 @@ test('Headings h1-h6', () => {
     const md = htmlToMd(`<h${i}>Heading ${i}</h${i}>`);
     assertStrContains(md, '#'.repeat(i) + ' Heading ' + i, `h${i} converts correctly`);
   }
+});
+
+test('Heading indentation from surrounding HTML is removed', () => {
+  const md = htmlToMd('<p>Before</p>\n      <h2>After</h2>');
+  assertStrContains(md, '\n\n## After', 'heading starts at line beginning');
+  assertEq(md.includes('      ## After'), false, 'no leading spaces before heading');
+});
+
+test('Indented hash lines inside code blocks are preserved', () => {
+  const md = htmlToMd('<pre><code>  # shell comment\n  ## markdown comment</code></pre>');
+  assertStrContains(md, '  # shell comment', 'code indentation preserved');
+  assertStrContains(md, '  ## markdown comment', 'code heading-like line preserved');
 });
 
 console.log('\nUnit: Horizontal Rule');
